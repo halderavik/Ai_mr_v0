@@ -14,6 +14,24 @@ import { AnalysisTable } from "@/components/analysis-table"
 import { AnalysisInsights } from "@/components/analysis-insights"
 import { FileUploader } from "@/components/file-uploader"
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from "@/components/ui/resizable"
+import {
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+
+interface MetadataTable {
+  [key: string]: any;
+}
+
+interface PreviewData {
+  dataset_id: string;
+  filename: string;
+  preview_rows: any[];
+  metadata: MetadataTable | null;
+}
 
 export default function AnalysisPage() {
   const searchParams = useSearchParams()
@@ -26,6 +44,8 @@ export default function AnalysisPage() {
   const [isUploading, setIsUploading] = useState(false)
   const [activeTab, setActiveTab] = useState("chart")
   const [showUploader, setShowUploader] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [previewData, setPreviewData] = useState<PreviewData | null>(null)
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -56,26 +76,124 @@ export default function AnalysisPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }
 
-  const handleFileUpload = (files: FileList | null) => {
-    if (!files) return
-    setIsUploading(true)
+  const handleFileUpload = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    
+    setIsUploading(true);
+    setError(null);
 
-    // Simulate file upload
-    setTimeout(() => {
-      setIsUploading(false)
-      setShowUploader(false)
-      setMessages([
-        ...messages,
-        { role: "user" as const, content: `Uploaded file: ${files[0].name}` },
-        {
-          role: "assistant" as const,
-          content:
-            "I've processed your uploaded file. What type of analysis would you like to perform on this dataset?",
-        },
-      ])
-      scrollToBottom()
-    }, 1500)
-  }
+    const formData = new FormData();
+    formData.append("file", files[0]);
+
+    try {
+      const response = await fetch("http://localhost:8000/api/upload", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Upload failed: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      setPreviewData(data);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed");
+      setPreviewData(null);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const renderMetadataTable = (metadata: MetadataTable | null) => {
+    if (!metadata) return null;
+
+    // Skip the full_meta_dict as it's already included in other fields
+    const { full_meta_dict, ...displayMetadata } = metadata;
+
+    return (
+      <div className="space-y-4">
+        {Object.entries(displayMetadata).map(([key, value]) => {
+          // Skip if value is null or undefined
+          if (value == null) return null;
+
+          // Handle different types of metadata
+          let displayValue: any;
+          if (typeof value === "object") {
+            if (Array.isArray(value)) {
+              displayValue = value.join(", ");
+            } else {
+              displayValue = Object.entries(value)
+                .map(([k, v]) => `${k}: ${v}`)
+                .join(", ");
+            }
+          } else {
+            displayValue = value;
+          }
+
+          return (
+            <Card key={key}>
+              <CardHeader>
+                <CardTitle className="text-lg font-semibold capitalize">
+                  {key.replace(/_/g, " ")}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Value</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    <TableRow>
+                      <TableCell className="whitespace-pre-wrap">
+                        {displayValue}
+                      </TableCell>
+                    </TableRow>
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const renderDataTable = (data: any[]) => {
+    if (!data.length) return null;
+
+    const columns = Object.keys(data[0]);
+
+    return (
+      <div className="rounded-md border">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              {columns.map((column) => (
+                <TableHead key={column} className="font-semibold">
+                  {column}
+                </TableHead>
+              ))}
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {data.map((row, rowIndex) => (
+              <TableRow key={rowIndex}>
+                {columns.map((column) => (
+                  <TableCell key={`${rowIndex}-${column}`}>
+                    {row[column]}
+                  </TableCell>
+                ))}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    );
+  };
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -238,11 +356,26 @@ export default function AnalysisPage() {
               <FileUploader
                 onUpload={handleFileUpload}
                 isUploading={isUploading}
-                onCancel={() => setShowUploader(false)}
+                accept=".sav,.csv,.xlsx,.xls"
               />
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {previewData && (
+        <Tabs defaultValue="data" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="data">Data Preview</TabsTrigger>
+            <TabsTrigger value="metadata">Metadata</TabsTrigger>
+          </TabsList>
+          <TabsContent value="data" className="mt-4">
+            {renderDataTable(previewData.preview_rows)}
+          </TabsContent>
+          <TabsContent value="metadata" className="mt-4">
+            {renderMetadataTable(previewData.metadata)}
+          </TabsContent>
+        </Tabs>
       )}
     </div>
   )

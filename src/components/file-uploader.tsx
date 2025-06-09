@@ -3,17 +3,19 @@
 import type React from "react"
 
 import { useState, useRef } from "react"
-import { Upload, X, FileText, FileSpreadsheet, FileCode } from "lucide-react"
+import { Upload, X, FileText, FileSpreadsheet, FileCode, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
+import { Card, CardContent } from "@/components/ui/card"
 
-interface FileUploaderProps {
+export interface FileUploaderProps {
   onUpload: (files: FileList | null) => void
   isUploading: boolean
   onCancel: () => void
+  accept?: string
 }
 
-export function FileUploader({ onUpload, isUploading, onCancel }: FileUploaderProps) {
+export function FileUploader({ onUpload, isUploading, onCancel, accept }: FileUploaderProps) {
   const [dragActive, setDragActive] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState<FileList | null>(null)
   const [progress, setProgress] = useState(0)
@@ -86,70 +88,42 @@ export function FileUploader({ onUpload, isUploading, onCancel }: FileUploaderPr
   }
 
   return (
-    <div className="space-y-4">
-      {!isUploading ? (
-        <>
-          <div
-            className={`flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-6 transition-colors ${
-              dragActive ? "border-primary bg-primary/5" : "border-gray-300"
-            }`}
-            onDragEnter={handleDrag}
-            onDragLeave={handleDrag}
-            onDragOver={handleDrag}
-            onDrop={handleDrop}
+    <Card className={`w-full ${dragActive ? "border-primary" : ""}`}>
+      <CardContent className="p-6">
+        <div
+          className="flex flex-col items-center justify-center w-full"
+          onDragEnter={handleDrag}
+          onDragLeave={handleDrag}
+          onDragOver={handleDrag}
+          onDrop={handleDrop}
+        >
+          <input
+            type="file"
+            className="hidden"
+            onChange={handleChange}
+            accept={accept}
+            id="file-upload"
+          />
+          <label
+            htmlFor="file-upload"
+            className="flex flex-col items-center justify-center w-full cursor-pointer"
           >
-            <Upload className="mb-2 h-10 w-10 text-gray-400" />
-            <p className="mb-1 text-sm font-medium">Drag and drop your files here</p>
-            <p className="mb-4 text-xs text-gray-500">
-              Supports SPSS (.sav), CSV, Excel, R (.r), and Python (.py) files
-            </p>
-            <Button type="button" variant="outline" onClick={() => inputRef.current?.click()}>
-              Browse Files
-            </Button>
-            <input
-              ref={inputRef}
-              type="file"
-              className="hidden"
-              accept=".csv,.xlsx,.xls,.sav,.r,.py"
-              onChange={handleChange}
-            />
-          </div>
-
-          {selectedFiles && selectedFiles.length > 0 && (
-            <div className="rounded-lg border p-3">
-              <p className="mb-2 text-sm font-medium">Selected Files:</p>
-              <ul className="space-y-2">
-                {Array.from(selectedFiles).map((file, index) => (
-                  <li key={index} className="flex items-center justify-between text-sm">
-                    <div className="flex items-center">
-                      {getFileIcon(file.name)}
-                      <span className="ml-2">{file.name}</span>
-                    </div>
-                    <Button variant="ghost" size="sm" onClick={() => setSelectedFiles(null)}>
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </li>
-                ))}
-              </ul>
+            <div className="flex flex-col items-center justify-center pt-5 pb-6">
+              {isUploading ? (
+                <Loader2 className="w-8 h-8 mb-4 text-primary animate-spin" />
+              ) : (
+                <Upload className="w-8 h-8 mb-4 text-primary" />
+              )}
+              <p className="mb-2 text-sm text-gray-500">
+                <span className="font-semibold">Click to upload</span> or drag and drop
+              </p>
+              <p className="text-xs text-gray-500">
+                {accept ? `Supported formats: ${accept}` : "Any file type"}
+              </p>
             </div>
-          )}
-
-          <div className="flex justify-end space-x-2">
-            <Button variant="outline" onClick={onCancel}>
-              Cancel
-            </Button>
-            <Button onClick={handleUpload} disabled={!selectedFiles || selectedFiles.length === 0}>
-              Upload
-            </Button>
-          </div>
-        </>
-      ) : (
-        <div className="space-y-4 p-4">
-          <p className="text-center text-sm font-medium">Uploading files...</p>
-          <Progress value={progress} className="h-2 w-full" />
-          <p className="text-center text-xs text-gray-500">{progress}% complete</p>
+          </label>
         </div>
-      )}
-    </div>
+      </CardContent>
+    </Card>
   )
 }

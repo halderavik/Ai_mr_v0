@@ -6,6 +6,10 @@ import { GoogleIcon } from "@/components/google-icon"
 import Link from "next/link"
 
 export default function LoginPage() {
+  const handleUploadComplete = (dataset_id: string) => {
+    // This function is no longer needed, but kept for reference if needed in the future
+  };
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-50 p-4">
       <div className="w-full max-w-md rounded-lg border border-gray-200 bg-white p-8 shadow-sm">
