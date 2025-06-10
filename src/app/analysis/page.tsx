@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useRef } from "react"
+import { useState, useRef, useEffect } from "react"
 import { useSearchParams } from "next/navigation"
 import { Home, Plus, Folder, Download, FileUp, Send, BarChart2, Table, FileText, GripVertical } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -46,31 +46,71 @@ export default function AnalysisPage() {
   const [showUploader, setShowUploader] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [previewData, setPreviewData] = useState<PreviewData | null>(null)
+  const [debugLog, setDebugLog] = useState<string>("")
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  const handleSendMessage = (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!input.trim()) return
+  useEffect(() => {
+    const stored = localStorage.getItem("marketpro_uploaded_data");
+    if (stored) {
+      try {
+        setPreviewData(JSON.parse(stored));
+        setDebugLog(prev => prev + "\n[DEBUG] Loaded previewData from localStorage.");
+      } catch (e) {
+        setDebugLog(prev => prev + "\n[DEBUG] Failed to parse previewData from localStorage.");
+      }
+    } else {
+      setDebugLog(prev => prev + "\n[DEBUG] No previewData found in localStorage.");
+    }
+  }, []);
 
-    // Add user message
-    const newMessages = [...messages, { role: "user" as const, content: input }]
-    setMessages(newMessages)
-    setInput("")
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setDebugLog(prev => prev + `\n[DEBUG] Chat handler triggered. input: '${input}', previewData: ${!!previewData}`);
+    if (!input.trim()) {
+      setDebugLog(prev => prev + "\n[DEBUG] Input is empty. Chat not sent.");
+      setError("Please enter a message.");
+      return;
+    }
+    if (!previewData) {
+      setDebugLog(prev => prev + "\n[DEBUG] No previewData. Chat not sent.");
+      setError("Please upload a file before requesting analysis.");
+      return;
+    }
 
-    // Simulate AI response (in a real app, this would call your AI service)
-    setTimeout(() => {
-      setMessages([
-        ...newMessages,
-        {
-          role: "assistant" as const,
-          content:
-            "I've analyzed your request and generated the results. You can view the chart and table outputs in the visualization panel, and check the insights section for business recommendations.",
-        },
-      ])
-      scrollToBottom()
-    }, 1000)
-  }
+    const userMessage = input.trim();
+    setMessages(prev => [...prev, { role: "user", content: userMessage }]);
+    setInput("");
+    setError(null);
+
+    try {
+      setDebugLog(prev => prev + "\n[DEBUG] Sending POST to /api/chat...");
+      const resp = await fetch("http://localhost:8000/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          dataset_id: previewData.dataset_id,
+          message: userMessage,
+          filter_column: null,
+          filter_value: null,
+        }),
+      });
+      setDebugLog(prev => prev + `\n[DEBUG] Response status: ${resp.status}`);
+      if (!resp.ok) throw new Error("Analysis failed");
+      const data = await resp.json();
+      setMessages(prev => [
+        ...prev,
+        { role: "assistant", content: data.reply }
+      ]);
+      setDebugLog(prev => prev + "\n[DEBUG] Chat response received and displayed.");
+    } catch (err) {
+      setMessages(prev => [
+        ...prev,
+        { role: "assistant", content: "Error: " + (err instanceof Error ? err.message : "Unknown error") }
+      ]);
+      setDebugLog(prev => prev + `\n[DEBUG] Error: ${err instanceof Error ? err.message : err}`);
+    }
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -96,6 +136,12 @@ export default function AnalysisPage() {
       }
 
       const data = await response.json();
+      console.log("[DEBUG] Upload response:", data);
+      if (!data.dataset_id) {
+        setError("[DEBUG] Upload response missing dataset_id. See console for details.");
+        setPreviewData(null);
+        return;
+      }
       setPreviewData(data);
       setError(null);
     } catch (err) {
@@ -104,95 +150,6 @@ export default function AnalysisPage() {
     } finally {
       setIsUploading(false);
     }
-  };
-
-  const renderMetadataTable = (metadata: MetadataTable | null) => {
-    if (!metadata) return null;
-
-    // Skip the full_meta_dict as it's already included in other fields
-    const { full_meta_dict, ...displayMetadata } = metadata;
-
-    return (
-      <div className="space-y-4">
-        {Object.entries(displayMetadata).map(([key, value]) => {
-          // Skip if value is null or undefined
-          if (value == null) return null;
-
-          // Handle different types of metadata
-          let displayValue: any;
-          if (typeof value === "object") {
-            if (Array.isArray(value)) {
-              displayValue = value.join(", ");
-            } else {
-              displayValue = Object.entries(value)
-                .map(([k, v]) => `${k}: ${v}`)
-                .join(", ");
-            }
-          } else {
-            displayValue = value;
-          }
-
-          return (
-            <Card key={key}>
-              <CardHeader>
-                <CardTitle className="text-lg font-semibold capitalize">
-                  {key.replace(/_/g, " ")}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Value</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    <TableRow>
-                      <TableCell className="whitespace-pre-wrap">
-                        {displayValue}
-                      </TableCell>
-                    </TableRow>
-                  </TableBody>
-                </Table>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-    );
-  };
-
-  const renderDataTable = (data: any[]) => {
-    if (!data.length) return null;
-
-    const columns = Object.keys(data[0]);
-
-    return (
-      <div className="rounded-md border">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              {columns.map((column) => (
-                <TableHead key={column} className="font-semibold">
-                  {column}
-                </TableHead>
-              ))}
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {data.map((row, rowIndex) => (
-              <TableRow key={rowIndex}>
-                {columns.map((column) => (
-                  <TableCell key={`${rowIndex}-${column}`}>
-                    {row[column]}
-                  </TableCell>
-                ))}
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
-    );
   };
 
   return (
@@ -245,6 +202,15 @@ export default function AnalysisPage() {
                 </div>
               </CardContent>
               <div className="border-t p-4">
+                {error && (
+                  <div className="mb-2 p-2 bg-red-100 text-red-700 rounded">{error}</div>
+                )}
+                {!previewData && (
+                  <div className="mb-2 p-2 bg-yellow-100 text-yellow-800 rounded">[DEBUG] No file uploaded. Chat will not be sent to backend.</div>
+                )}
+                {debugLog && (
+                  <pre className="mb-2 p-2 bg-gray-100 text-xs text-gray-700 rounded max-h-40 overflow-y-auto">{debugLog}</pre>
+                )}
                 <form onSubmit={handleSendMessage} className="flex gap-2">
                   <Textarea
                     placeholder="Ask about your data or request an analysis..."
@@ -357,25 +323,11 @@ export default function AnalysisPage() {
                 onUpload={handleFileUpload}
                 isUploading={isUploading}
                 accept=".sav,.csv,.xlsx,.xls"
+                onCancel={() => setShowUploader(false)}
               />
             </CardContent>
           </Card>
         </div>
-      )}
-
-      {previewData && (
-        <Tabs defaultValue="data" className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="data">Data Preview</TabsTrigger>
-            <TabsTrigger value="metadata">Metadata</TabsTrigger>
-          </TabsList>
-          <TabsContent value="data" className="mt-4">
-            {renderDataTable(previewData.preview_rows)}
-          </TabsContent>
-          <TabsContent value="metadata" className="mt-4">
-            {renderMetadataTable(previewData.metadata)}
-          </TabsContent>
-        </Tabs>
       )}
     </div>
   )

@@ -1,60 +1,74 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AI Market Research Platform (Ai_mr_v0)
+
+A full-stack AI-powered market research platform for interactive data analysis, supporting SPSS, CSV, and Excel files. Users can upload data, preview and confirm variable mappings (powered by LLM/Deepseek), and run advanced analyses (e.g., Van Westendorp) with interactive chat and visualization.
+
+---
+
+## Features
+- **Data Upload:** Supports SPSS (.sav), CSV, and Excel files. Extracts both data and metadata (variable descriptions).
+- **AI/LLM Variable Mapping:** Uses Deepseek LLM to interpret variable descriptions and propose mappings for analysis (e.g., price sensitivity variables for Van Westendorp).
+- **Interactive Confirmation:** Before running any analysis, the system asks the user to confirm or edit the proposed variable mapping via chat.
+- **Analysis Engine (MCP):** Modular MCP servers (e.g., VanWestendorpMCP) run the analysis using the confirmed variables.
+- **Modern Frontend:** Next.js app with file upload, data preview, chat interface, and interactive results (charts, tables, insights).
+- **Backend API:** FastAPI backend with robust pipeline for data, metadata, and LLM-powered analysis.
+
+---
 
 ## Getting Started
 
-First, run the development server:
+### Backend (FastAPI)
+1. **Install dependencies:**
+   ```bash
+   cd backend
+   pip install -r requirements.txt
+   ```
+2. **Run the backend server:**
+   ```bash
+   uvicorn app.main:app --reload
+   ```
+3. **Environment:**
+   - Configure `.env` for API keys (e.g., Deepseek) and settings.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+### Frontend (Next.js)
+1. **Install dependencies:**
+   ```bash
+   cd frontend
+   npm install
+   ```
+2. **Run the frontend server:**
+   ```bash
+   npm run dev
+   ```
+3. **Open [http://localhost:3000](http://localhost:3000) in your browser.**
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## How It Works
+1. **Upload Data:** User uploads a data file (SPSS, CSV, Excel). Backend extracts data and metadata.
+2. **Preview & Variable Mapping:** User previews data and metadata. When requesting analysis, the backend uses LLM to propose variable mappings based on metadata.
+3. **User Confirmation:** The system asks the user to confirm or edit the mapping via chat before running the analysis.
+4. **Run Analysis:** Once confirmed, the MCP server runs the analysis and returns results (tables, charts, insights).
+5. **Interactive Results:** Results are shown in the frontend with interactive charts, tables, and business insights.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+---
 
-## Learn More
+## AI/LLM-Powered Variable Mapping
+- The backend uses Deepseek (or any LLM) to interpret variable descriptions from metadata (especially for SPSS files) and propose the correct columns for analysis.
+- The user is always asked to confirm or edit the mapping before analysis is run, ensuring accuracy and transparency.
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Project Structure
+- `backend/` - FastAPI app, MCP servers, LLM integration, data/metadata handling
+- `frontend/` - Next.js app, file upload, chat, data preview, analysis UI
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## Contributing
+- Fork the repo and create a feature branch.
+- Submit pull requests for review.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+---
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-
-## Custom Tailwind CSS Setup
-
-This project uses Tailwind CSS with a custom theme based on CSS variables. The color palette (background, foreground, border, etc.) is defined in `globals.css` using CSS variables, and referenced in `tailwind.config.ts` for utility generation.
-
-### Important Notes
-- **Global styles** for background and text color are set directly in CSS using:
-  ```css
-  body {
-    background-color: hsl(var(--background));
-    color: hsl(var(--foreground));
-  }
-  ```
-  This is necessary because Tailwind does not generate utility classes (like `bg-background` or `text-foreground`) for custom color names based on CSS variables.
-- **Do not use** `@apply bg-background text-foreground;` or `@apply border-border;` in your CSS, as these will cause build errors unless you explicitly extend the relevant keys in your Tailwind config and the utility is generated.
-- For global border color, use:
-  ```css
-  * {
-    border-color: theme('colors.border');
-  }
-  ```
-
-### Troubleshooting
-If you see errors about missing custom utility classes (e.g., `bg-background`, `border-border`), use direct CSS as above. This is a known limitation of Tailwind with custom color names and CSS variables.
+## License
+MIT

@@ -85,6 +85,13 @@ export default function DashboardPage() {
       setPreviewRows(data.preview_rows || [])
       setColumns(data.preview_rows.length > 0 ? Object.keys(data.preview_rows[0]) : [])
       setMetadata(data.metadata || null)
+      localStorage.setItem("marketpro_uploaded_data", JSON.stringify({
+        dataset_id: data.dataset_id,
+        filename: data.filename,
+        metadata: data.metadata
+      }))
+      console.log("[DEBUG] Stored upload data in localStorage")
+      router.push("/analysis")
     } catch (err: any) {
       setError(err.message || "Upload error")
     } finally {
@@ -97,6 +104,65 @@ export default function DashboardPage() {
     // Navigate to analysis page with the query
     router.push(`/analysis?query=${encodeURIComponent(query)}`)
   }
+
+  const renderMetadataTable = (metadata: any) => {
+    if (!metadata) return null;
+    const { full_meta_dict, ...displayMetadata } = metadata;
+    return (
+      <div className="space-y-4">
+        {Object.entries(displayMetadata).map(([key, value]) => {
+          if (value == null) return null;
+          let displayValue: any;
+          if (typeof value === "object") {
+            if (Array.isArray(value)) {
+              displayValue = value.join(", ");
+            } else {
+              displayValue = Object.entries(value)
+                .map(([k, v]) => `${k}: ${v}`)
+                .join(", ");
+            }
+          } else {
+            displayValue = value;
+          }
+          return (
+            <Card key={key} className="mb-2">
+              <CardContent>
+                <div className="font-semibold capitalize mb-1">{key.replace(/_/g, " ")}</div>
+                <div className="text-sm whitespace-pre-wrap">{displayValue}</div>
+              </CardContent>
+            </Card>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const renderDataTable = (data: any[]) => {
+    if (!data.length) return null;
+    const columns = Object.keys(data[0]);
+    return (
+      <div className="rounded-md border mb-4">
+        <table className="min-w-full bg-white text-sm">
+          <thead>
+            <tr>
+              {columns.map((col) => (
+                <th key={col} className="border-b px-3 py-2 text-left bg-gray-50">{col}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {data.map((row, idx) => (
+              <tr key={idx}>
+                {columns.map((col) => (
+                  <td key={col} className="border-b px-3 py-2">{row[col] !== null && row[col] !== undefined ? String(row[col]) : ""}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -158,32 +224,15 @@ export default function DashboardPage() {
             {uploading && <div className="text-blue-600 mb-2">Uploading…</div>}
             {error && <div className="text-red-600 mb-2">Error: {error}</div>}
             {previewRows.length > 0 && (
-              <div className="mb-4 overflow-x-auto border border-gray-200 rounded-lg">
+              <div className="mb-4">
                 <div className="p-2 font-semibold">Preview of first 10 rows ({filename})</div>
-                <table className="min-w-full bg-white text-sm">
-                  <thead>
-                    <tr>
-                      {columns.map((col) => (
-                        <th key={col} className="border-b px-3 py-2 text-left bg-gray-50">{col}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {previewRows.map((row, idx) => (
-                      <tr key={idx}>
-                        {columns.map((col) => (
-                          <td key={col} className="border-b px-3 py-2">{row[col] !== null && row[col] !== undefined ? String(row[col]) : ""}</td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+                {renderDataTable(previewRows)}
               </div>
             )}
             {metadata && (
               <div className="mb-4">
-                <div className="font-semibold mb-1">SPSS Metadata (JSON)</div>
-                <pre className="bg-gray-900 text-gray-100 rounded p-3 overflow-x-auto max-h-64 text-xs">{JSON.stringify(metadata, null, 2)}</pre>
+                <div className="font-semibold mb-1">SPSS Metadata</div>
+                {renderMetadataTable(metadata)}
                 <div className="text-xs text-gray-500">(All SPSS metadata fields have been captured above.)</div>
               </div>
             )}
