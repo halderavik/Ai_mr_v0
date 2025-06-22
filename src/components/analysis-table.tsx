@@ -1,43 +1,87 @@
 "use client"
 
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Card } from "@/components/ui/card"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 
-// Sample data - in a real app, this would come from your analysis
-const data = [
-  { segment: "Segment A", size: "25%", avgSpend: "$125", satisfaction: 4.2, loyalty: "High" },
-  { segment: "Segment B", size: "40%", avgSpend: "$85", satisfaction: 3.8, loyalty: "Medium" },
-  { segment: "Segment C", size: "15%", avgSpend: "$210", satisfaction: 4.7, loyalty: "Very High" },
-  { segment: "Segment D", size: "30%", avgSpend: "$65", satisfaction: 3.2, loyalty: "Low" },
-  { segment: "Segment E", size: "20%", avgSpend: "$150", satisfaction: 4.0, loyalty: "High" },
-]
+interface AnalysisTableProps {
+  priceGrid: number[];
+  tooCheap: number[];
+  tooExpensive: number[];
+  bargain: number[];
+  gettingExpensive: number[];
+  pmc: number;
+  pme: number;
+  opp: number;
+}
 
-export function AnalysisTable() {
+export function AnalysisTable({
+  priceGrid,
+  tooCheap,
+  tooExpensive,
+  bargain,
+  gettingExpensive,
+  pmc,
+  pme,
+  opp
+}: AnalysisTableProps) {
+  // Create table data with key price points highlighted
+  const tableData = priceGrid.map((price, index) => ({
+    price,
+    tooCheap: tooCheap[index],
+    tooExpensive: tooExpensive[index],
+    bargain: bargain[index],
+    gettingExpensive: gettingExpensive[index],
+    isPMC: Math.abs(price - pmc) < 0.01,
+    isPME: Math.abs(price - pme) < 0.01,
+    isOPP: Math.abs(price - opp) < 0.01,
+  }));
+
   return (
-    <Card className="h-full overflow-auto p-4">
-      <div className="mb-4 text-center text-sm font-medium text-gray-700">Market Segment Analysis</div>
+    <div className="w-full h-full overflow-auto">
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Segment</TableHead>
-            <TableHead>Size</TableHead>
-            <TableHead>Avg. Spend</TableHead>
-            <TableHead>Satisfaction</TableHead>
-            <TableHead>Loyalty</TableHead>
+            <TableHead>Price ($)</TableHead>
+            <TableHead>Too Cheap (%)</TableHead>
+            <TableHead>Bargain (%)</TableHead>
+            <TableHead>Getting Expensive (%)</TableHead>
+            <TableHead>Too Expensive (%)</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
-          {data.map((row) => (
-            <TableRow key={row.segment}>
-              <TableCell className="font-medium">{row.segment}</TableCell>
-              <TableCell>{row.size}</TableCell>
-              <TableCell>{row.avgSpend}</TableCell>
-              <TableCell>{row.satisfaction}</TableCell>
-              <TableCell>{row.loyalty}</TableCell>
+          {tableData.map((row, index) => (
+            <TableRow
+              key={index}
+              className={
+                row.isPMC
+                  ? "bg-red-50"
+                  : row.isPME
+                  ? "bg-blue-50"
+                  : row.isOPP
+                  ? "bg-green-50"
+                  : ""
+              }
+            >
+              <TableCell className="font-medium">
+                ${row.price.toFixed(2)}
+                {row.isPMC && " (PMC)"}
+                {row.isPME && " (PME)"}
+                {row.isOPP && " (OPP)"}
+              </TableCell>
+              <TableCell>{row.tooCheap.toFixed(1)}%</TableCell>
+              <TableCell>{row.bargain.toFixed(1)}%</TableCell>
+              <TableCell>{row.gettingExpensive.toFixed(1)}%</TableCell>
+              <TableCell>{row.tooExpensive.toFixed(1)}%</TableCell>
             </TableRow>
           ))}
         </TableBody>
       </Table>
-    </Card>
-  )
+    </div>
+  );
 }

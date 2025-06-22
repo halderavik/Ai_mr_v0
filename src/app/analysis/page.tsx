@@ -33,12 +33,49 @@ interface PreviewData {
   metadata: MetadataTable | null;
 }
 
+interface AnalysisResult {
+  visualizations: {
+    charts: Array<{
+      type: string;
+      title: string;
+      data: any;
+      annotations?: any;
+      plot_data?: string;  // Base64 encoded PNG data
+    }>;
+    tables: Array<{
+      type: string;
+      title: string;
+      data: Array<{
+        metric: string;
+        value: string;
+      }>;
+    }>;
+  };
+  insights: string;
+}
+
+interface Message {
+  role: "user" | "assistant";
+  content: string;
+  timestamp: number;
+  context?: {
+    analysis_type?: string;
+    variables_used?: string[];
+    current_visualization?: string;
+  };
+}
+
 export default function AnalysisPage() {
   const searchParams = useSearchParams()
   const initialQuery = searchParams.get("query") || ""
 
-  const [messages, setMessages] = useState<{ role: "user" | "assistant"; content: string }[]>(
-    initialQuery ? [{ role: "user", content: initialQuery }] : [],
+  const [messages, setMessages] = useState<Message[]>(
+    initialQuery ? [{ 
+      role: "user", 
+      content: initialQuery,
+      timestamp: Date.now(),
+      context: {}
+    }] : [],
   )
   const [input, setInput] = useState("")
   const [isUploading, setIsUploading] = useState(false)
@@ -47,6 +84,13 @@ export default function AnalysisPage() {
   const [error, setError] = useState<string | null>(null)
   const [previewData, setPreviewData] = useState<PreviewData | null>(null)
   const [debugLog, setDebugLog] = useState<string>("")
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null)
+  const [conversationContext, setConversationContext] = useState<{
+    currentAnalysisType?: string;
+    variablesUsed?: string[];
+    lastQuestion?: string;
+    lastAnswer?: string;
+  }>({})
 
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -64,6 +108,33 @@ export default function AnalysisPage() {
     }
   }, []);
 
+  useEffect(() => {
+    if (messages.length > 0) {
+      localStorage.setItem("marketpro_conversation", JSON.stringify({
+        messages,
+        context: conversationContext,
+        timestamp: Date.now()
+      }));
+    }
+  }, [messages, conversationContext]);
+
+  useEffect(() => {
+    const stored = localStorage.getItem("marketpro_conversation");
+    if (stored) {
+      try {
+        const { messages: storedMessages, context: storedContext } = JSON.parse(stored);
+        // Only load if we don't have any messages (initial load)
+        if (messages.length === 0) {
+          setMessages(storedMessages);
+          setConversationContext(storedContext);
+          setDebugLog(prev => prev + "\n[DEBUG] Loaded conversation from localStorage.");
+        }
+      } catch (e) {
+        setDebugLog(prev => prev + "\n[DEBUG] Failed to parse conversation from localStorage.");
+      }
+    }
+  }, []); // Only run on mount
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     setDebugLog(prev => prev + `\n[DEBUG] Chat handler triggered. input: '${input}', previewData: ${!!previewData}`);
@@ -79,7 +150,27 @@ export default function AnalysisPage() {
     }
 
     const userMessage = input.trim();
-    setMessages(prev => [...prev, { role: "user", content: userMessage }]);
+    
+    // Check if user wants to clear chat history
+    const clearCommands = ["clear", "clear chat", "reset", "reset chat", "start over", "new chat"];
+    if (clearCommands.includes(userMessage.toLowerCase())) {
+      clearChatHistory();
+      setInput("");
+      return;
+    }
+
+    const newMessage: Message = {
+      role: "user",
+      content: userMessage,
+      timestamp: Date.now(),
+      context: {
+        analysis_type: conversationContext.currentAnalysisType,
+        variables_used: conversationContext.variablesUsed,
+        current_visualization: activeTab
+      }
+    };
+    
+    setMessages(prev => [...prev, newMessage]);
     setInput("");
     setError(null);
 
@@ -93,24 +184,78 @@ export default function AnalysisPage() {
           message: userMessage,
           filter_column: null,
           filter_value: null,
+          previous_result: analysisResult,
+          conversation_context: {
+            messages: messages.slice(-5),
+            current_analysis_type: conversationContext.currentAnalysisType,
+            variables_used: conversationContext.variablesUsed,
+            last_question: conversationContext.lastQuestion,
+            last_answer: conversationContext.lastAnswer
+          }
         }),
       });
       setDebugLog(prev => prev + `\n[DEBUG] Response status: ${resp.status}`);
       if (!resp.ok) throw new Error("Analysis failed");
       const data = await resp.json();
-      setMessages(prev => [
-        ...prev,
-        { role: "assistant", content: data.reply }
-      ]);
+      
+      // Debug log the response
+      setDebugLog(prev => prev + `\n[DEBUG] API Response: ${JSON.stringify(data, null, 2)}`);
+      
+      // Handle chat communication
+      const assistantMessage: Message = {
+        role: "assistant",
+        content: data.reply || "I apologize, but I couldn't generate a proper response.",
+        timestamp: Date.now(),
+        context: {
+          analysis_type: data.context?.analysis_type,
+          variables_used: data.context?.variables_used,
+          current_visualization: activeTab
+        }
+      };
+      setMessages(prev => [...prev, assistantMessage]);
+      
+      // Handle visualizations
+      if (data.visualizations) {
+        setDebugLog(prev => prev + "\n[DEBUG] Received visualizations from MCP");
+        console.log("[DEBUG] Setting analysis result with visualizations:", data.visualizations);
+        setAnalysisResult({
+          visualizations: data.visualizations,
+          insights: data.insights || ''
+        });
+      } else {
+        setDebugLog(prev => prev + "\n[DEBUG] No visualizations received, keeping previous ones");
+      }
+      
+      // Update conversation context
+      if (data.context) {
+        setConversationContext(prev => ({
+          ...prev,
+          currentAnalysisType: data.context.analysis_type || prev.currentAnalysisType,
+          variablesUsed: data.context.variables_used || prev.variablesUsed,
+          lastQuestion: userMessage,
+          lastAnswer: data.reply
+        }));
+      }
+      
       setDebugLog(prev => prev + "\n[DEBUG] Chat response received and displayed.");
     } catch (err) {
-      setMessages(prev => [
-        ...prev,
-        { role: "assistant", content: "Error: " + (err instanceof Error ? err.message : "Unknown error") }
-      ]);
+      const errorMessage: Message = {
+        role: "assistant",
+        content: "Error: " + (err instanceof Error ? err.message : "Unknown error"),
+        timestamp: Date.now(),
+        context: {}
+      };
+      setMessages(prev => [...prev, errorMessage]);
       setDebugLog(prev => prev + `\n[DEBUG] Error: ${err instanceof Error ? err.message : err}`);
     }
   };
+
+  // Add debug logging for visualization rendering
+  useEffect(() => {
+    if (analysisResult?.visualizations) {
+      console.log("[DEBUG] Current visualizations:", analysisResult.visualizations);
+    }
+  }, [analysisResult]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
@@ -152,10 +297,24 @@ export default function AnalysisPage() {
     }
   };
 
+  const clearChatHistory = () => {
+    // Clear messages from state
+    setMessages([]);
+    // Clear conversation context
+    setConversationContext({});
+    // Clear analysis result
+    setAnalysisResult(null);
+    // Clear from localStorage
+    localStorage.removeItem("marketpro_conversation");
+    // Clear debug log
+    setDebugLog("");
+    setDebugLog(prev => prev + "\n[DEBUG] Chat history cleared");
+  };
+
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen min-h-0 w-full max-w-full overflow-x-hidden bg-gray-50">
       {/* Sidebar */}
-      <div className="flex w-16 flex-col items-center border-r bg-white py-4">
+      <div className="flex w-16 flex-col items-center border-r bg-white py-4 max-w-full">
         <Button variant="ghost" size="icon" className="mb-6 rounded-full bg-gray-900 text-white hover:bg-gray-800">
           <Home className="h-5 w-5" />
           <span className="sr-only">Home</span>
@@ -177,16 +336,16 @@ export default function AnalysisPage() {
       </div>
 
       {/* Main Content */}
-      <div className="flex flex-1 flex-col">
-        <ResizablePanelGroup direction="horizontal" className="h-full">
+      <div className="flex flex-1 flex-col h-full min-h-0 w-full max-w-full">
+        <ResizablePanelGroup direction="horizontal" className="h-full min-h-0 flex-1">
           {/* Chat Panel */}
-          <ResizablePanel defaultSize={30} minSize={20} maxSize={60} className="p-4">
-            <Card className="flex h-full flex-col">
+          <ResizablePanel defaultSize={40} minSize={30} maxSize={50} className="p-4 h-full min-h-0 w-full max-w-full">
+            <Card className="flex h-full flex-col min-h-0 w-full max-w-full">
               <CardHeader className="border-b px-4 py-3">
                 <CardTitle className="text-lg font-medium">Chat Interface</CardTitle>
               </CardHeader>
-              <CardContent className="flex-1 overflow-hidden p-4 h-full">
-                <div className="flex flex-col space-y-4 h-full overflow-y-auto">
+              <CardContent className="flex-1 min-h-0 p-4 overflow-hidden break-words">
+                <div className="flex flex-col space-y-4 h-full min-h-0 overflow-y-auto">
                   {messages.map((message, index) => (
                     <div key={index} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
                       <div
@@ -234,10 +393,10 @@ export default function AnalysisPage() {
           </ResizableHandle>
 
           {/* Analysis Panel */}
-          <ResizablePanel defaultSize={70} className="p-4">
-            <div className="flex h-full flex-col gap-4">
+          <ResizablePanel defaultSize={60} className="p-4 h-full min-h-0 w-full max-w-full">
+            <div className="flex h-full flex-col gap-4 min-h-0 w-full max-w-full">
               {/* Visualization Panel */}
-              <Card className="flex-1">
+              <Card className="flex-1 flex flex-col min-h-0 w-full max-w-full">
                 <CardHeader className="border-b px-4 py-3">
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-lg font-medium">Graphs and Tables</CardTitle>
@@ -255,11 +414,58 @@ export default function AnalysisPage() {
                     </Tabs>
                   </div>
                 </CardHeader>
-                <CardContent className="p-4">
-                  <Tabs value={activeTab} onValueChange={setActiveTab}>
-                    <TabsContent value="chart" className="mt-0">
-                      <div className="relative h-[300px]">
-                        <AnalysisChart />
+                <CardContent className="p-4 flex-1 min-h-0 w-full max-w-full">
+                  <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full min-h-0 w-full max-w-full">
+                    <TabsContent value="chart" className="mt-0 h-full min-h-0 w-full max-w-full">
+                      <div className="relative h-full min-h-[300px] max-h-[500px] overflow-y-auto w-full max-w-full">
+                        {analysisResult?.visualizations?.charts ? (
+                          <div className="space-y-4">
+                            {(() => {
+                              console.log("[DEBUG] Chart data:", analysisResult.visualizations.charts);
+                              return null;
+                            })()}
+                            {analysisResult.visualizations.charts.map((chart, index) => (
+                              <div key={index} className="mb-4">
+                                <h3 className="text-lg font-medium mb-2">{chart.title}</h3>
+                                {(() => {
+                                  console.log("[DEBUG] Individual chart:", chart);
+                                  return null;
+                                })()}
+                                {chart.type === "van_westendorp_curves" && (
+                                  <div className="w-full h-[300px] flex items-center justify-center bg-white rounded-lg border">
+                                    {chart.plot_data ? (
+                                      <>
+                                        {(() => {
+                                          console.log("[DEBUG] Plot data available:", chart.plot_data.substring(0, 50) + "...");
+                                          return null;
+                                        })()}
+                                        <img
+                                          src={`data:image/png;base64,${chart.plot_data}`}
+                                          alt={chart.title}
+                                          className="max-w-full max-h-[280px] object-contain"
+                                        />
+                                      </>
+                                    ) : (
+                                      <>
+                                        {(() => {
+                                          console.log("[DEBUG] No plot data in chart:", chart);
+                                          return null;
+                                        })()}
+                                        <div className="flex h-full items-center justify-center text-gray-500">
+                                          No plot data available
+                                        </div>
+                                      </>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="flex h-full items-center justify-center text-gray-500">
+                            No analysis results available
+                          </div>
+                        )}
                         <div className="absolute right-2 top-2 flex gap-1">
                           <Button variant="outline" size="sm">
                             <Download className="mr-1 h-4 w-4" />
@@ -272,9 +478,39 @@ export default function AnalysisPage() {
                         </div>
                       </div>
                     </TabsContent>
-                    <TabsContent value="table" className="mt-0">
-                      <div className="relative h-[300px]">
-                        <AnalysisTable />
+                    <TabsContent value="table" className="mt-0 h-full min-h-0 w-full max-w-full">
+                      <div className="relative h-full min-h-[300px] max-h-[500px] overflow-y-auto w-full max-w-full">
+                        {analysisResult?.visualizations?.tables ? (
+                          <div>
+                            {analysisResult.visualizations.tables.map((table, index) => (
+                              <div key={index} className="mb-8">
+                                <h3 className="text-lg font-medium mb-4">{table.title}</h3>
+                                <div className="border rounded-lg overflow-x-auto">
+                                  <div className="min-w-full divide-y divide-gray-200">
+                                    <div className="bg-gray-50">
+                                      <div className="grid grid-cols-2 px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                        <div>Metric</div>
+                                        <div>Value</div>
+                                      </div>
+                                    </div>
+                                    <div className="bg-white divide-y divide-gray-200">
+                                      {table.data.map((row, rowIndex) => (
+                                        <div key={rowIndex} className="grid grid-cols-2 px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                                          <div>{row.metric}</div>
+                                          <div>{row.value}</div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="flex h-full items-center justify-center text-gray-500">
+                            No analysis results available
+                          </div>
+                        )}
                         <div className="absolute right-2 top-2 flex gap-1">
                           <Button variant="outline" size="sm">
                             <Download className="mr-1 h-4 w-4" />
@@ -292,7 +528,7 @@ export default function AnalysisPage() {
               </Card>
 
               {/* Insights Panel */}
-              <Card className="flex-1">
+              <Card className="flex-1 flex flex-col min-h-0 w-full max-w-full">
                 <CardHeader className="border-b px-4 py-3">
                   <div className="flex items-center justify-between">
                     <CardTitle className="text-lg font-medium">Insights and Business Decision</CardTitle>
@@ -302,8 +538,22 @@ export default function AnalysisPage() {
                     </Button>
                   </div>
                 </CardHeader>
-                <CardContent className="p-4">
-                  <AnalysisInsights />
+                <CardContent className="p-4 flex-1 min-h-0 w-full max-w-full">
+                  <div className="prose max-w-none h-full min-h-0 overflow-y-auto break-words w-full max-w-full">
+                    {analysisResult?.insights ? (
+                      <div className="text-gray-700">
+                        {analysisResult.insights.split("\n").map((paragraph, index) => (
+                          <p key={index} className="mb-4">
+                            {paragraph}
+                          </p>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-gray-500 italic">
+                        No insights available yet. Upload a file and ask for analysis to see insights.
+                      </p>
+                    )}
+                  </div>
                 </CardContent>
               </Card>
             </div>

@@ -11,6 +11,7 @@ A full-stack AI-powered market research platform for interactive data analysis, 
 - **Analysis Engine (MCP):** Modular MCP servers (e.g., VanWestendorpMCP) run the analysis using the confirmed variables.
 - **Modern Frontend:** Next.js app with file upload, data preview, chat interface, and interactive results (charts, tables, insights).
 - **Backend API:** FastAPI backend with robust pipeline for data, metadata, and LLM-powered analysis.
+- **Interactive Visualizations:** Advanced charting capabilities using Chart.js for data visualization and analysis.
 
 ---
 
@@ -34,12 +35,45 @@ A full-stack AI-powered market research platform for interactive data analysis, 
    ```bash
    cd frontend
    npm install
+   # Install visualization dependencies
+   npm install chart.js react-chartjs-2
    ```
 2. **Run the frontend server:**
    ```bash
    npm run dev
    ```
 3. **Open [http://localhost:3000](http://localhost:3000) in your browser.**
+
+---
+
+## Dependencies
+
+### Frontend Dependencies
+- **Core:**
+  - Next.js 15.3.2
+  - React 19
+  - TypeScript
+  - Tailwind CSS
+  - Radix UI Components
+  - Shadcn UI
+
+- **Visualization:**
+  - Chart.js - For interactive charts and graphs
+  - react-chartjs-2 - React wrapper for Chart.js
+  - Features:
+    - Line charts for price sensitivity analysis
+    - Interactive tooltips
+    - Custom annotations
+    - Responsive design
+    - Export capabilities
+
+### Backend Dependencies
+- FastAPI
+- Python 3.11+
+- Pandas
+- Pyreadstat (for SPSS files)
+- SQLAlchemy
+- Pydantic
 
 ---
 
@@ -61,6 +95,10 @@ A full-stack AI-powered market research platform for interactive data analysis, 
 ## Project Structure
 - `backend/` - FastAPI app, MCP servers, LLM integration, data/metadata handling
 - `frontend/` - Next.js app, file upload, chat, data preview, analysis UI
+  - `src/components/` - Reusable UI components
+    - `analysis-chart.tsx` - Chart.js integration for data visualization
+    - `analysis-table.tsx` - Tabular data display
+    - Other UI components
 
 ---
 
